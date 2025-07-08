@@ -512,7 +512,7 @@ const acceptSession = asyncHandler(async (req, res) => {
     session.zoomSessionName = `session_${session._id}_${meetingNumber}`;
     session.zoomPassword = zoomPassword;
     session.zoomMeetingLink = `/expertpanel/sessioncall?meetingId=${meetingNumber}&sessionId=${session._id}`;
-    session.userMeetingLink = `/userpanel/videocall?meetingId=${meetingNumber}&sessionId=${session._id}`;
+    session.userMeetingLink = `/userpanel/sessioncall?meetingId=${meetingNumber}&sessionId=${session._id}`;
 
     // 4️⃣ Payout processing (if price > 0 and not already processed)
     if (!session.payoutProcessed && session.price > 0) {
