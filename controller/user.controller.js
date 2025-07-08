@@ -253,7 +253,6 @@ const checkExpertExists = async (email, phone) => {
 
 
 
-// ✅ Register User (Creates a user after OTP verification)
 const registerUser = asyncHandler(async (req, res) => {
   const { firstName, lastName, email, phone } = req.body;
 
@@ -267,11 +266,10 @@ const registerUser = asyncHandler(async (req, res) => {
   const existingUser = await User.findOne({
     $or: [
       { email },
-      ...(normalizedPhone ? [{ phone: normalizedPhone }] : [])
+      ...(normalizedPhone ? [{ phone: normalizedPhone }] : []),
     ]
   });
 
-  
   let user;
 
   if (existingUser) {
@@ -292,8 +290,16 @@ const registerUser = asyncHandler(async (req, res) => {
     });
   }
 
+  // Generate a JWT token for the user
+  const token = jwt.sign(
+    { _id: user._id, email: user.email, phone: user.phone, role: "user" },
+    process.env.ACCESS_TOKEN_SECRET,
+    { expiresIn: "7d" }
+  );
+
+  // Return the response with the token
   return res.status(201).json(
-    new ApiResponse(201, { message: "User registered successfully" })
+    new ApiResponse(201, { message: "User registered successfully", token })
   );
 });
 
