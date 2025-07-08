@@ -47,7 +47,10 @@ export const createPaymentIntent = asyncHandler(async (req, res) => {
     throw new ApiError(401, "User not found or unauthorized");
   }
 
-  const merchantTransactionId = `pay-${user._id}-${Date.now()}`;
+  const shortenedId = user._id.toString().slice(0, 6); // Use first 6 characters of ObjectId
+  const shortTimestamp = Date.now().toString().slice(-6); // Use last 6 digits of the timestamp
+  const merchantTransactionId = `pay-${shortenedId}-${shortTimestamp}`;
+
    const entityId =
     paymentMethod === "MADA"
       ? HYPERPAY_ENTITY_ID_MADA
