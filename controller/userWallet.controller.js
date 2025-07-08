@@ -5,12 +5,13 @@ import axios from 'axios';
 import { User } from "../model/user.model.js";
 import Transaction from "../model/transaction.model.js";
 import { UserToExpertSession } from "../model/usertoexpertsession.model.js";
-
+import dotenv from 'dotenv'
+dotenv.config();
 // HyperPay API endpoints and credentials
-const HYPERPAY_API_URL = 'https://eu-test.oppwa.com';
-const HYPERPAY_ACCESS_TOKEN = 'OGFjN2E0Yzk5NzdiY2YxMTAxOTc3ZGNlNzYyODAzODV8I0ZNRiN5dHhZeiUzPXpEb2NZNmY=';
-const HYPERPAY_ENTITY_ID_VISA_MASTER = '8ac7a4c9977bcf1101977dcef9cd0389';
-const HYPERPAY_ENTITY_ID_MADA = '8ac7a4c9977bcf1101977dd10db4038e';
+const HYPERPAY_API_URL = process.env.HYPERPAY_API_URL;
+const HYPERPAY_ACCESS_TOKEN = process.env.HYPERPAY_ACCESS_TOKEN;
+const HYPERPAY_ENTITY_ID_VISA_MASTER = process.env.HYPERPAY_ENTITY_ID_VISA_MASTER;
+const HYPERPAY_ENTITY_ID_MADA = process.env.HYPERPAY_ENTITY_ID_MADA;
 
 /**
  * Get user wallet balance
@@ -46,8 +47,11 @@ export const createPaymentIntent = asyncHandler(async (req, res) => {
     throw new ApiError(401, "User not found or unauthorized");
   }
 
-  const merchantTransactionId = `topup-${user._id}-${Date.now()}`;
-  const entityId = HYPERPAY_ENTITY_ID_VISA_MASTER;
+  const merchantTransactionId = `pay-${user._id}-${Date.now()}`;
+   const entityId =
+    paymentMethod === "MADA"
+      ? HYPERPAY_ENTITY_ID_MADA
+      : HYPERPAY_ENTITY_ID_VISA_MASTER;
 
   try {
     const checkoutData = {
@@ -68,8 +72,8 @@ export const createPaymentIntent = asyncHandler(async (req, res) => {
       'billing.postcode': user.address?.postcode || '12345',
 
       // Required for 3DS2 testing
-      'customParameters[3DS2_enrolled]': 'true',
-      'customParameters[3DS2_flow]': 'challenge',
+      // 'customParameters[3DS2_enrolled]': 'true',
+      // 'customParameters[3DS2_flow]': 'challenge',
       
       notificationUrl: `${process.env.API_URL}/api/user/wallet/webhook`,
     };
