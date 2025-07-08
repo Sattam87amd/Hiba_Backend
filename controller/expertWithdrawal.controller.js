@@ -1,7 +1,7 @@
 // controllers/expertWithdrawalController.js
 import { Expert } from '../model/expert.model.js';
 import { ExpertWithdrawalRequest } from '../model/expertWithdrawalRequest.model.js';
-import { Transaction } from '../model/transaction.model.js';
+import Transaction from '../model/transaction.model.js'; // Import Transaction model
 import axios from 'axios';
 import nodemailer from 'nodemailer';
 

@@ -3,7 +3,7 @@ import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
 import axios from 'axios';
 import { Expert } from "../model/expert.model.js";
-import { Transaction } from "../model/transaction.model.js";
+import Transaction from "../model/transaction.model.js"; // Import Transaction model
 import { ExpertToExpertSession } from "../model/experttoexpertsession.model.js";
 import { UserToExpertSession } from "../model/usertoexpertsession.model.js";
 

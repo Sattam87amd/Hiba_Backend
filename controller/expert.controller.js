@@ -14,7 +14,7 @@ import nodemailer from 'nodemailer';
 import { User } from '../model/user.model.js';
 import { ExpertToExpertSession } from '../model/experttoexpertsession.model.js';
 import { UserToExpertSession } from '../model/usertoexpertsession.model.js';
-import {Transaction} from '../model/transaction.model.js';
+import Transaction from '../model/transaction.model.js';
 import { uploadToBytescale, deleteFromBytescale, getOptimizedImageUrlWithFallback, validateFile } from '../utils/bytescale.js';
 dotenv.config();
 

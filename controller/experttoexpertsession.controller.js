@@ -12,8 +12,7 @@ import Rating from "../model/rating.model.js"; // Import Rating model
 import { Expert } from "../model/expert.model.js"; // Added Expert model import
 import { applyGiftCardToBooking } from "./giftcard.controller.js"; // Import gift card function
 import { sendEmail } from "../utils/emailService.js"; // Import sendEmail utility
-import { Transaction } from "../model/transaction.model.js";
-
+import Transaction from "../model/transaction.model.js"; // Import Transaction model
 dotenv.config();
 
 // Helper function to check if the consulting expert's session time is available
@@ -486,89 +485,38 @@ const generateZoomPassword = () => {
   return password; // Always exactly 8 characters
 };
 
+
+
 const acceptSession = asyncHandler(async (req, res) => {
   const { id, selectedDate, selectedTime } = req.body;
 
   try {
-    // First, check in the ExpertToExpertSession collection
-    let session = await ExpertToExpertSession.findById(id)
-      .populate("expertId", "firstName lastName email")
-      .populate("consultingExpertID", "firstName lastName email");
-
-    // If not found in ExpertToExpertSession, check in UserToExpertSession collection
-    if (!session) {
-      session = await UserToExpertSession.findById(id)
-        .populate("userId", "firstName lastName email")
-        .populate("expertId", "firstName lastName email");
-    }
+    // 1️⃣ Find session only in UserToExpertSession
+    const session = await UserToExpertSession.findById(id)
+      .populate("userId", "firstName lastName email")
+      .populate("expertId", "firstName lastName email");
 
     if (!session) {
       return res.status(404).json({ message: "Session not found" });
     }
 
-    // Check if payment is completed for expert sessions
-    if (session.collection.name === "experttoexpertsessions") {
-      // For expert-to-expert sessions, check various valid payment scenarios
-      const isValidPayment = 
-        session.paymentStatus === "completed" || // Direct wallet payment
-        session.paymentStatus === "not_applicable" || // Free session
-        (session.paymentMethod === "gift_card" && session.giftCardAmountRedeemed > 0) || // Gift card payment
-        (session.paymentMethod === "gift_card_plus_wallet" && session.paymentAmount > 0); // Gift card + wallet
-
-      if (!isValidPayment) {
-        console.log("Payment verification failed:", {
-          sessionId: session._id,
-          paymentStatus: session.paymentStatus,
-          paymentMethod: session.paymentMethod,
-          giftCardAmount: session.giftCardAmountRedeemed,
-          walletAmount: session.paymentAmount
-        });
-        return res.status(400).json({ 
-          message: "Cannot accept session with incomplete payment",
-          details: {
-            paymentStatus: session.paymentStatus,
-            paymentMethod: session.paymentMethod
-          }
-        });
-      }
-    }
-
-    // Update the slots with the new date and time
-    session.slots = [
-      {
-        selectedDate: selectedDate,
-        selectedTime: selectedTime,
-      },
-    ];
-
+    // 2️⃣ Update slots and status
+    session.slots = [{ selectedDate, selectedTime }];
     session.status = "confirmed";
 
-    // Generate Zoom Video SDK meeting details
+    // 3️⃣ Generate Zoom Video SDK meeting details
     const meetingNumber = generateMeetingNumber();
-    const zoomPassword = generateZoomPassword(); // Generate once for the session
+    const zoomPassword = generateZoomPassword();
 
-    // Store Zoom Video SDK meeting details
     session.zoomMeetingId = meetingNumber.toString();
-    session.zoomSessionName = `session_${session._id}_${meetingNumber}`; // Store session name
+    session.zoomSessionName = `session_${session._id}_${meetingNumber}`;
     session.zoomPassword = zoomPassword;
+    session.zoomMeetingLink = `/expertpanel/sessioncall?meetingId=${meetingNumber}&sessionId=${session._id}`;
+    session.userMeetingLink = `/userpanel/videocall?meetingId=${meetingNumber}&sessionId=${session._id}`;
 
-    // Set the zoom meeting link for both experts
-    if (session.collection.name === "experttoexpertsessions") {
-      // For expert-to-expert sessions, both experts need their own links
-      session.zoomMeetingLink = `/expertpanel/sessioncall?meetingId=${meetingNumber}&sessionId=${session._id}`;
-      session.userMeetingLink = `/expertpanel/sessioncall?meetingId=${meetingNumber}&sessionId=${session._id}`;
-    } else {
-      // For user-to-expert sessions
-      session.zoomMeetingLink = `/expertpanel/sessioncall?meetingId=${meetingNumber}&sessionId=${session._id}`;
-      session.userMeetingLink = `/userpanel/videocall?meetingId=${meetingNumber}&sessionId=${session._id}`;
-    }
-
-    await session.save();
-
-    // Process payout now if not already processed and session is paid
+    // 4️⃣ Payout processing (if price > 0 and not already processed)
     if (!session.payoutProcessed && session.price > 0) {
-      const expertToPayId = session.consultingExpertID?._id || session.consultingExpertID;
-      const expertDoc = await Expert.findById(expertToPayId);
+      const expertDoc = await Expert.findById(session.expertId._id);
       if (expertDoc) {
         const averageRating = expertDoc.averageRating || 0;
         const expertSharePercentage = averageRating >= 4 ? 0.7 : 0.5;
@@ -588,10 +536,10 @@ const acceptSession = asyncHandler(async (req, res) => {
           amount: expertShare,
           status: 'COMPLETED',
           paymentMethod: 'WALLET',
-          description: 'Expert-to-Expert session earnings (confirmed)',
-          metadata: { origin: 'expert_to_expert_session', sessionId: session._id }
+          description: 'User-to-Expert session earnings (confirmed)',
+          metadata: { origin: 'user_to_expert_session', sessionId: session._id }
         });
-        expertDoc.wallets.earning.ledger = expertDoc.wallets.earning.ledger || [];
+
         expertDoc.wallets.earning.ledger.push(creditTx._id);
         expertDoc.transactions = expertDoc.transactions || [];
         expertDoc.transactions.push(creditTx._id);
@@ -599,81 +547,55 @@ const acceptSession = asyncHandler(async (req, res) => {
       }
     }
 
-    // Send confirmation email to the user/booking expert
-    try {
-      let recipientEmail;
-      let recipientFirstName;
-      let recipientLastName;
-      let expertFirstName =
-        session.collection.name === "usertoexpertsessions"
-          ? session.expertId.firstName
-          : session.consultingExpertID.firstName;
- 
- 
-      let expertLastName =
-        session.collection.name === "usertoexpertsessions"
-          ? session.expertId.lastName
-          : session.consultingExpertID.lastName;
+    await session.save();
 
-      if (session.collection.name === "usertoexpertsessions") {
-        // UserToExpertSession: Email the user who booked
-        recipientEmail = session.userId.email;
-        recipientFirstName = session.userId.firstName;
-        recipientLastName = session.userId.lastName;
-      } else {
-        // ExpertToExpertSession: Email the expert who booked
-        recipientEmail = session.expertId.email;
-        recipientFirstName = session.expertId.firstName;
-        recipientLastName = session.expertId.lastName;
-      }
+    // 5️⃣ Send confirmation email to the user
+    try {
+      const recipientEmail = session.userId.email;
+      const recipientFirstName = session.userId.firstName;
+      const expertFirstName = session.expertId.firstName;
+      const expertLastName = session.expertId.lastName;
 
       if (recipientEmail) {
-        console.log(
-          `Attempting to send confirmation email to: ${recipientEmail}`
-        );
-        console.log(`Using FRONTEND_URL: ${process.env.FRONTEND_URL}`);
         await sendEmail({
           to: recipientEmail,
           subject: "Session Confirmed!",
-          html: `<h1>Your Session is Confirmed!</h1>\n                 <p>Hello ${recipientFirstName},</p>\n                 <p>Your session with expert ${expertFirstName} ${expertLastName} has been confirmed.</p>\n                 <p>Session ID: ${session._id}</p>\n                                              <p>You can join the session here: <a href=\"${process.env.FRONTEND_URL}${session.userMeetingLink}\">${process.env.FRONTEND_URL}${session.userMeetingLink}</a></p>\n                 <p>Please be ready a few minutes before your session starts.</p>\n                 <p>Thank you for using our platform.</p>`,
+          html: `
+            <h1>Your Session is Confirmed!</h1>
+            <p>Hello ${recipientFirstName},</p>
+            <p>Your session with expert ${expertFirstName} ${expertLastName} has been confirmed.</p>
+            <p>Session ID: ${session._id}</p>
+            <p>You can join the session here: 
+              <a href="${process.env.FRONTEND_URL}${session.userMeetingLink}">
+                ${process.env.FRONTEND_URL}${session.userMeetingLink}
+              </a>
+            </p>
+            <p>Please be ready a few minutes before your session starts.</p>
+            <p>Thank you for using our platform.</p>
+          `,
         });
-        console.log(
-          `Confirmation email sent to ${recipientEmail} for session ${session._id}`
-        );
-      } else {
-        console.warn(
-          `Could not send confirmation email for session ${session._id}: recipient email not found.`
-        );
       }
     } catch (emailError) {
-      console.error(
-        `Failed to send confirmation email for session ${session._id}:`,
-        emailError
-      );
-      console.error(
-        `Email error details:`,
-        emailError.message,
-        emailError.response?.data
-      );
+      console.error(`Failed to send confirmation email:`, emailError);
     }
 
-    const sessionObj = session.toObject ? session.toObject() : { ...session };
-    sessionObj.consultingExpertID = (session.consultingExpertID?._id?.toString?.() || session.consultingExpertID?.toString?.() || session.consultingExpertID || "");
-    sessionObj.expertId = (session.expertId?._id?.toString?.() || session.expertId?.toString?.() || session.expertId || "");
     res.status(200).json({
       success: true,
-      message: "Session accepted successfully",
-      session: sessionObj
+      message: "Session accepted and confirmed successfully",
+      session,
     });
   } catch (error) {
     console.error("Error accepting session:", error);
     res.status(500).json({
       success: false,
       message: "Error accepting session",
-      error: error.message
+      error: error.message,
     });
   }
 });
+
+
+
 
 // New endpoint to generate Video SDK signature when joining
 const generateVideoSDKAuth = asyncHandler(async (req, res) => {

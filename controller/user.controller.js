@@ -6,6 +6,7 @@ import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import mongoose from "mongoose";
+import Transaction from "../model/transaction.model.js";
 // import { uploadToCloudinary } from "../middleware/multer.middleware.js";
 import nodemailer from 'nodemailer';
 import { Expert } from "../model/expert.model.js";

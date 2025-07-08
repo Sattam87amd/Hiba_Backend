@@ -8,7 +8,8 @@ import {
     completeUserSession,
     updateSessionStatus,
     getExpertSessions,        // Add this import
-    getCurrentExpertSession
+    getCurrentExpertSession,
+    markSessionPaid
 } from '../controller/usertoexpertsession.controller.js';
 import VerifyJwt from '../middleware/auth.middleware.js';
 const router = Router();
@@ -42,6 +43,7 @@ router.get('/current-expert-session/:expertId', VerifyJwt, getCurrentExpertSessi
 // Expert updates status (confirm / reject)
 router.patch('/:sessionId/status', VerifyJwt, updateSessionStatus);
 
+router.put('/mark-paid/:sessionId', markSessionPaid)
 // // Route for getting expert sessions (Sessions where the expert is providing service)
 // router.get("/sessions", getExpertSessions);
 

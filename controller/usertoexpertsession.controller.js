@@ -11,7 +11,7 @@ import { applyGiftCardToBooking } from "./giftcard.controller.js"; // Import gif
 import ApiError from '../utils/ApiError.js'; // Import ApiError
 import { sendEmail } from "../utils/emailService.js"; // Import sendEmail utility
 import { generateUserVideoSDKSignature } from '../utils/userVideoSDKHelper.js';
-import { Transaction } from "../model/transaction.model.js";
+import Transaction from '../model/transaction.model.js'; // Import Transaction model
 import Rating from '../model/rating.model.js';
 
 dotenv.config();
@@ -657,6 +657,40 @@ const getUserSessionDetails = asyncHandler(async (req, res) => {
   }
 });
 
+const markSessionPaid = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+
+  // Optionally, verify authenticated user if required:
+  // const userId = req.user?._id;
+  // if (!userId) throw new ApiError(401, "Unauthorized");
+
+  const session = await UserToExpertSession.findById(sessionId);
+
+  if (!session) {
+    throw new ApiError(404, "Session not found");
+  }
+
+  if (session.paymentStatus === "completed") {
+    return res.status(200).json({
+      success: true,
+      message: "Session already marked as paid",
+      session
+    });
+  }
+
+  session.paymentStatus = "completed";
+  session.paymentMethod = "Hyperpay"; // Mark that it was paid via HyperPay
+  session.paymentReference = req.body.paymentReference || ""; // Optional for storing transaction ID
+
+  await session.save();
+
+  res.status(200).json({
+    success: true,
+    message: "Session marked as paid successfully",
+    session
+  });
+});
+
 // Complete user session
 const completeUserSession = asyncHandler(async (req, res) => {
   const { sessionId, endTime, status = 'completed', actualDuration } = req.body;
@@ -806,5 +840,6 @@ export {
   generateUserVideoSDKAuth,
   getExpertSessions,        // Add this
   getCurrentExpertSession,
-  updateSessionStatus
+  updateSessionStatus,
+  markSessionPaid
 };

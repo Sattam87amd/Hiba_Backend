@@ -8,7 +8,7 @@ import Rating from '../model/rating.model.js';
 import nodemailer from 'nodemailer';
 import WithdrawalRequest from '../model/userWithdrawalRequest.model.js';
 import { ExpertWithdrawalRequest } from '../model/expertWithdrawalRequest.model.js';
-import { Transaction } from '../model/transaction.model.js';
+import Transaction from '../model/transaction.model.js'; // Import Transaction model
 import axios from 'axios';
 dotenv.config()
 

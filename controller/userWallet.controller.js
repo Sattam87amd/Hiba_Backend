@@ -3,7 +3,7 @@ import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
 import axios from 'axios';
 import { User } from "../model/user.model.js";
-import { Transaction } from "../model/transaction.model.js";
+import Transaction from "../model/transaction.model.js";
 import { UserToExpertSession } from "../model/usertoexpertsession.model.js";
 
 // HyperPay API endpoints and credentials
