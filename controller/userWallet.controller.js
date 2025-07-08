@@ -72,8 +72,8 @@ export const createPaymentIntent = asyncHandler(async (req, res) => {
       'billing.postcode': user.address?.postcode || '12345',
 
       // Required for 3DS2 testing
-      // 'customParameters[3DS2_enrolled]': 'true',
-      // 'customParameters[3DS2_flow]': 'challenge',
+      'customParameters[3DS2_enrolled]': 'true',
+      'customParameters[3DS2_flow]': 'challenge',
       
       notificationUrl: `${process.env.API_URL}/api/user/wallet/webhook`,
     };
