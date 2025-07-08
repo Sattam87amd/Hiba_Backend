@@ -267,7 +267,7 @@ const bookUserToExpertSession = asyncHandler(async (req, res) => {
 
   const token = req.header("Authorization")?.replace("Bearer ", "");
   if (!token) {
-    throw new ApiError(400, "Token is required");
+    throw new ApiError(400, "Please Log In Again Session is expired or invalid");
   }
 
   const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
