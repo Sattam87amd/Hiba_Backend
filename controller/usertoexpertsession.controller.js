@@ -267,7 +267,7 @@ const bookUserToExpertSession = asyncHandler(async (req, res) => {
 
   const token = req.header("Authorization")?.replace("Bearer ", "");
   if (!token) {
-    throw new ApiError(400, "Please Log In Again Session is expired or invalid");
+    throw new ApiError(400, "Token is required");
   }
 
   const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
@@ -341,10 +341,10 @@ const bookUserToExpertSession = asyncHandler(async (req, res) => {
       if (!booker) {
         throw new ApiError(404, "Booking user not found.");
       }
-      if ((booker.walletBalance || 0) < finalPriceToPay) {
-        throw new ApiError(400, `Insufficient wallet balance. Please top up your wallet. Amount due: ${finalPriceToPay} SAR`);
-      }
-      booker.walletBalance -= finalPriceToPay;
+      // if ((booker.walletBalance || 0) < finalPriceToPay) {
+      //   throw new ApiError(400, `Insufficient wallet balance. Please top up your wallet. Amount due: ${finalPriceToPay} SAR`);
+      // }
+      // booker.walletBalance -= finalPriceToPay;
       await booker.save();
       
       sessionData.paymentStatus = 'completed';
@@ -353,6 +353,7 @@ const bookUserToExpertSession = asyncHandler(async (req, res) => {
       console.log(`Paid ${finalPriceToPay} from wallet by user ${userId}. New balance: ${booker.walletBalance}`);
     }
   }
+
 
   // Calculate potential payout but defer until expert confirms
   const expertDoc = await Expert.findById(expertId);
