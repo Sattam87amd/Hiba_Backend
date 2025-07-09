@@ -141,78 +141,78 @@ const checkAvailability = async (expertId, sessionDate, sessionTime) => {
 // Function to check if a user is eligible for a free session
 const checkFreeSessionEligibility = async (userId, expertId) => {
   try {
-    // Check if the expert has enabled free sessions
+    // Fetch the expert's details
     const expert = await Expert.findById(expertId);
     
     if (!expert || !expert.freeSessionEnabled) {
+      // Expert has not enabled free sessions
       return false;
     }
 
-    // Check if the user has had any previous user-to-expert sessions with this expert
-    const existingUserToExpertSessions = await UserToExpertSession.findOne({
+    // Check if the user has ever had a user-to-expert session with this expert
+    const existingUserToExpertSession = await UserToExpertSession.findOne({
       userId: userId,
-      expertId: expertId
+      expertId: expertId,
     });
 
-    // Check if the user has had any previous expert-to-expert sessions with this expert
-    const existingExpertToExpertSessions = await ExpertToExpertSession.findOne({
-      expertId: userId, // The user is an expert in this case
-      consultingExpertID: expertId
-    });
+    // If user has a previous session with this expert, they are not eligible for a free session
+    if (existingUserToExpertSession) {
+      return false;
+    }
 
-    // User is eligible if they have had no previous sessions with this expert
-    return !existingUserToExpertSessions && !existingExpertToExpertSessions;
+    // If the user has no previous sessions with the expert, they are eligible for a free session
+    return true;
   } catch (error) {
     console.error("Error checking free session eligibility:", error);
-    return false;
+    return false; // Default to false in case of error
   }
 };
 
 // Function to create a TAP payment
-const createTapPayment = async (sessionData, price, successRedirectUrl, cancelRedirectUrl) => {
-  try {
-    const payload = {
-      amount: price,
-      currency: "SAR", // Change to your currency
-      customer: {
-        first_name: sessionData.firstName,
-        last_name: sessionData.lastName,
-        email: sessionData.email,
-        phone: {
-          country_code: "+971", // Default to UAE, adjust as needed
-          number: sessionData.phone
-        }
-      },
-      source: { id: "src_all" },
-      redirect: {
-        url: successRedirectUrl
-      },
-      post: {
-        url: cancelRedirectUrl
-      },
-      metadata: {
-        sessionId: sessionData._id.toString(),
-        sessionType: "user-to-expert"
-      }
-    };
+// const createTapPayment = async (sessionData, price, successRedirectUrl, cancelRedirectUrl) => {
+//   try {
+//     const payload = {
+//       amount: price,
+//       currency: "SAR", // Change to your currency
+//       customer: {
+//         first_name: sessionData.firstName,
+//         last_name: sessionData.lastName,
+//         email: sessionData.email,
+//         phone: {
+//           country_code: "+971", // Default to UAE, adjust as needed
+//           number: sessionData.phone
+//         }
+//       },
+//       source: { id: "src_all" },
+//       redirect: {
+//         url: successRedirectUrl
+//       },
+//       post: {
+//         url: cancelRedirectUrl
+//       },
+//       metadata: {
+//         sessionId: sessionData._id.toString(),
+//         sessionType: "user-to-expert"
+//       }
+//     };
 
-    const response = await axios.post(
-      "https://api.tap.company/v2/charges",
-      payload,
-      {
-        headers: {
-          "Authorization": `Bearer ${process.env.TAP_SECRET_KEY}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
+//     const response = await axios.post(
+//       "https://api.tap.company/v2/charges",
+//       payload,
+//       {
+//         headers: {
+//           "Authorization": `Bearer ${process.env.TAP_SECRET_KEY}`,
+//           "Content-Type": "application/json"
+//         }
+//       }
+//     );
 
-    return response.data;
-  } catch (error) {
-    console.error("Error creating TAP payment:", error.response?.data || error);
-    throw new Error("Payment gateway error: " + (error.response?.data?.message || error.message));
-  }
-};
+//     return response.data;
+//   } catch (error) {
+//     console.error("Error creating TAP payment:", error.response?.data || error);
+//     throw new Error("Payment gateway error: " + (error.response?.data?.message || error.message));
+//   }
+// };
 
 // Controller for "My Bookings" - When the logged-in user is the one who booked the session (userId)
 const getUserBookings = asyncHandler(async (req, res) => {
