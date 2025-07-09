@@ -19,6 +19,18 @@ export const createRating = async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
+    // Fetch session to check for status, but no payout check for rating
+    let session;
+    if (sessionType === 'user-to-expert') {
+      session = await UserToExpertSession.findById(req.body.sessionId);
+    } else {
+      session = await ExpertToExpertSession.findById(req.body.sessionId);
+    }
+
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+
     // Create and save the rating document
     const newRating = new Rating({
       expertId,

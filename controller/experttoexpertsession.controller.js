@@ -928,14 +928,8 @@ const submitRatingAndProcessPayout = asyncHandler(async (req, res) => {
   const { rating, comment } = req.body;
   const raterMongoId = req.user?._id;
 
-  console.log(
-    `[Rating Submission] Received for session ${sessionId}: Rating - ${rating}, Comment - '${comment}', RaterID - ${raterMongoId}`
-  );
-
   if (!rating || rating < 1 || rating > 5) {
-    return res
-      .status(400)
-      .json({ message: "Invalid rating. Must be between 1 and 5." });
+    return res.status(400).json({ message: "Invalid rating. Must be between 1 and 5." });
   }
 
   if (!raterMongoId) {
@@ -943,162 +937,90 @@ const submitRatingAndProcessPayout = asyncHandler(async (req, res) => {
   }
 
   try {
-    let session = await ExpertToExpertSession.findById(sessionId);
-    let sessionType = "expert-to-expert";
-    let ratedExpertId;
-    let raterType;
-
-    if (!session) {
-      session = await UserToExpertSession.findById(sessionId);
-      sessionType = "user-to-expert";
-    }
-
+    // Fetch the session (user-to-expert session in this case)
+    let session = await UserToExpertSession.findById(sessionId);
     if (!session) {
       return res.status(404).json({ message: "Session not found." });
     }
 
-    // Authorization & Determine ratedExpertId and raterType
-    if (sessionType === "expert-to-expert") {
-      if (session.expertId.toString() !== raterMongoId.toString()) {
-        return res
-          .status(403)
-          .json({
-            message:
-              "Forbidden: You did not book this expert-to-expert session.",
-          });
-      }
-      ratedExpertId = session.consultingExpertID;
-      raterType = "Expert"; // The expert who booked is rating the consulting expert
-    } else {
-      // user-to-expert
-      if (session.userId.toString() !== raterMongoId.toString()) {
-        return res
-          .status(403)
-          .json({
-            message:
-              "Forbidden: You did not participate in this user-to-expert session.",
-          });
-      }
-      ratedExpertId = session.expertId;
-      raterType = "User"; // The user is rating the expert
+    let ratedExpertId = session.expertId;
+    let raterType = "User"; // The user is rating the expert
+
+    // Authorization for user-to-expert session
+    if (session.userId.toString() !== raterMongoId.toString()) {
+      return res.status(403).json({
+        message: "Forbidden: You did not participate in this user-to-expert session.",
+      });
     }
 
     if (session.status !== "completed") {
-      return res
-        .status(400)
-        .json({
-          message: "Session must be 'completed' before submitting a rating.",
-        });
+      return res.status(400).json({ message: "Session must be 'completed' before submitting a rating." });
     }
 
     // Check if a Rating document already exists for this specific context in the ratings collection
     const existingRatingDoc = await Rating.findOne({
       expertId: ratedExpertId,
       raterId: raterMongoId,
-      sessionType: sessionType,
-      // If you add sessionId to Rating model in future, you'd query by that too for more specificity
+      sessionType: "user-to-expert",
     });
 
-    // Check if payout has already been processed for this session
-    if (session.payoutProcessed) {
-      return res.status(400).json({
-        message: "Payout has already been processed for this session.",
-        details:
-          "Rating cannot be submitted or changed after payout processing.",
-      });
-    }
-
-    // If we reach here, it means no rating doc exists in ratings collection for this context,
-    // and payout has not been processed. It's okay to proceed.
-    // The session.rating field on the session document will be updated/set.
-
-    // Create new Rating document
+    // If no existing rating document exists, proceed with the new rating
     const newRating = new Rating({
       expertId: ratedExpertId,
       raterId: raterMongoId,
       sessionId: session._id, // Save the session ID
-      sessionModelName: session.constructor.modelName, // Save the model name (e.g., 'ExpertToExpertSession')
-      sessionType: sessionType,
+      sessionModelName: session.constructor.modelName, // Save the model name (e.g., 'UserToExpertSession')
+      sessionType: "user-to-expert",
       rating: rating,
       comment: comment,
       raterType: raterType,
     });
     await newRating.save();
-    console.log(
-      `[Rating Submission] New rating document ${newRating._id} created in ratings collection.`
-    );
 
     // Update session document
     session.rating = rating; // Keep numeric rating on session for payout calculation
     session.status = "Rating Submitted";
 
-    let expertToPayId = ratedExpertId;
-
-    if (session.price > 0 && expertToPayId) {
-      const expertDoc = await Expert.findById(expertToPayId);
-
-      if (expertDoc) {
-        const averageRating = expertDoc.averageRating || 0; // Default to 0 if not set
-        const expertSharePercentage = averageRating > 3 ? 0.7 : 0.5; // Use averageRating
-
-        session.expertPayoutAmount = session.price * expertSharePercentage;
-        session.platformFeeAmount = session.price * (1 - expertSharePercentage);
-
-        // credit to new earning wallet
-        expertDoc.wallets = expertDoc.wallets || { earning: { balance: 0, ledger: [] }, spending: { balance: 0, ledger: [] } };
-        expertDoc.wallets.earning.balance += session.expertPayoutAmount;
-
-        // create ledger transaction
-        const creditTx = await Transaction.create({
-          expertId: expertDoc._id,
-          type: 'DEPOSIT',
-          amount: session.expertPayoutAmount,
-          status: 'COMPLETED',
-          paymentMethod: 'WALLET',
-          description: 'Expert-to-Expert session earnings',
-          metadata: { origin: 'expert_to_expert_session', sessionId: session._id }
-        });
-        expertDoc.wallets.earning.ledger = expertDoc.wallets.earning.ledger || [];
-        expertDoc.wallets.earning.ledger.push(creditTx._id);
-        expertDoc.transactions = expertDoc.transactions || [];
-        expertDoc.transactions.push(creditTx._id);
-        await expertDoc.save();
-
-        session.payoutProcessed = true;
-        console.log(
-          `[Rating Submission] Payout for expert ${expertToPayId} calculated using averageRating ${averageRating}. Payout: ${session.expertPayoutAmount}`
-        );
-      } else {
-        console.error(
-          `[Rating Submission] Expert with ID ${expertToPayId} not found for payout calculation.`
-        );
-        // Consider if payoutProcessed should be true and amount 0 if expert not found, or handle differently.
-        // For now, if expert not found, payoutProcessed remains false for this paid session.
-      }
-    } else if (session.price === 0) {
-      session.payoutProcessed = true;
-      session.expertPayoutAmount = 0;
-      session.platformFeeAmount = 0;
+    // Increment number of ratings
+    const expertDoc = await Expert.findById(ratedExpertId);
+    if (!expertDoc) {
+      return res.status(404).json({ message: "Expert not found." });
     }
 
+    // Increment the number of ratings
+    expertDoc.numberOfRatings += 1;
+
+    // Incrementally calculate the new average rating
+    const previousAverageRating = expertDoc.averageRating || 0; // Default to 0 if not set
+    const previousNumberOfRatings = expertDoc.numberOfRatings - 1; // Before this new rating
+
+    // Calculate new average rating
+    const newAverageRating = (previousAverageRating * previousNumberOfRatings + rating) / expertDoc.numberOfRatings;
+
+    // Update the expert's average rating and ratings array
+    expertDoc.averageRating = newAverageRating;
+    expertDoc.ratings.push(newRating._id); // Add the new rating to the expert's ratings array
+
+    // Save the expert model with the updated ratings and average rating
+    await expertDoc.save();
+
+    // Save the updated session
     await session.save();
-    console.log(
-      `[Rating Submission] Session ${session._id} updated. Status: ${session.status}, Rating: ${session.rating}`
-    );
 
     res.status(200).json({
-      message: "Rating submitted and payout processed successfully.",
+      message: "Rating submitted successfully.",
       sessionData: session, // Send back updated session
       ratingData: newRating, // Send back new rating document
     });
   } catch (error) {
-    console.error("Error submitting rating and processing payout:", error);
+    console.error("Error submitting rating:", error);
     res.status(500).json({
       message: "An error occurred while submitting the rating.",
       error: error.message,
     });
   }
 });
+
 
 const getExpertPayoutHistory = asyncHandler(async (req, res) => {
   const expertId = req.user?._id;
