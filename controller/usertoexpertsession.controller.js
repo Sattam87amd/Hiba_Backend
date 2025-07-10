@@ -359,7 +359,7 @@ const bookUserToExpertSession = asyncHandler(async (req, res) => {
   const expertDoc = await Expert.findById(expertId);
   if (expertDoc) {
     const avgRating = expertDoc.averageRating || 0;
-    const sharePercentage = avgRating >= 4 ? 0.7 : 0.5;
+    const sharePercentage = avgRating >= 4 ? 0.95 : 0.95;
     const expertShare = finalPriceToPay * sharePercentage;
     const platformFee = finalPriceToPay - expertShare;
 
