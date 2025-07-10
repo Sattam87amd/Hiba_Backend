@@ -57,10 +57,12 @@ const expertSchema = new mongoose.Schema(
     photoFile: String,
     otp: String,
     otpExpires: Date,
-    price: {
-      type: Number, // Save price as a number
-      required: false, // Set to true if it is a required field
-    },
+  prices: {
+    fifteenMin:   { type: Number, default: 0 }, // 15-minute price
+    thirtyMin:    { type: Number, default: 0 }, // 30-minute price
+    fortyFiveMin: { type: Number, default: 0 }, // 45-minute price
+    sixtyMin:     { type: Number, default: 0 }, // 60-minute price
+  },
     role: {
       type: String,
       enum: ["expert"],

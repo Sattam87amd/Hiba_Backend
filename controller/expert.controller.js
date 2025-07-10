@@ -1013,46 +1013,55 @@ const updateExpertCharity = async (req, res) => {
   }
 };
 
-const updateExpertPrice = async (req, res) => {
+ const updateExpertPrice = async (req, res) => {
   try {
-    const { price } = req.body;
     const expertId = req.headers.expertid;
-
     if (!expertId) {
+      return res.status(400).json({ success: false, message: 'Expert ID is required' });
+    }
+
+    // Extract only known price fields from the body
+    const { fifteenMin, thirtyMin, fortyFiveMin, sixtyMin } = req.body;
+    const updates = {};
+
+    if (fifteenMin   !== undefined) updates['prices.fifteenMin']   = Number(fifteenMin);
+    if (thirtyMin    !== undefined) updates['prices.thirtyMin']    = Number(thirtyMin);
+    if (fortyFiveMin !== undefined) updates['prices.fortyFiveMin'] = Number(fortyFiveMin);
+    if (sixtyMin     !== undefined) updates['prices.sixtyMin']     = Number(sixtyMin);
+
+    // If no valid price provided
+    if (Object.keys(updates).length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Expert ID is required",
+        message: 'At least one price field (fifteenMin, thirtyMin, fortyFiveMin, sixtyMin) must be provided'
       });
     }
 
+    // Perform the update
     const expert = await Expert.findByIdAndUpdate(
       expertId,
-      { price },
-      { new: true }
+      { $set: updates },
+      { new: true, runValidators: true }
     );
 
     if (!expert) {
-      return res.status(404).json({
-        success: false,
-        message: "Expert not found",
-      });
+      return res.status(404).json({ success: false, message: 'Expert not found' });
     }
 
     return res.status(200).json({
       success: true,
-      message: "Price updated successfully",
-      data: { price: expert.price },
+      message: 'Prices updated successfully',
+      data: { prices: expert.prices }
     });
   } catch (error) {
-    console.error("Error updating expert price:", error);
+    console.error('Error updating expert prices:', error);
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message: 'Server error',
       error: error.message,
     });
   }
 };
-
 const calculateAge = (dob) => {
   const today = new Date();
   const birthDate = new Date(dob);
@@ -1064,7 +1073,7 @@ const calculateAge = (dob) => {
   ) {
     age--;
   }
-  return age;
+  return age; 
 };
 
 const updateExpert= async (req, res) => {
