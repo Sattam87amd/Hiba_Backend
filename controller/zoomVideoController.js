@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { UserToExpertSession } from '../model/usertoexpertsession.model.js';
 import { ExpertToExpertSession } from '../model/experttoexpertsession.model.js';
 import { Expert } from '../model/expert.model.js';
-
+import Transaction from '../model/transaction.model.js';
 // Use environment variables
 const ZOOM_SDK_KEY = process.env.ZOOM_SDK_KEY || 'YIpt60fa5SeNP604nMooFeQxAJZSdr6bz0bR';
 const ZOOM_SDK_SECRET = process.env.ZOOM_SDK_SECRET || 'Fxdu9TYkCPBGMeh8Mqbp4FSrrlsBxsBzWVEP';
@@ -572,19 +572,10 @@ const getUserSessionDetails = asyncHandler(async (req, res) => {
   }
 });
 
-// Complete user session
 const completeUserSession = asyncHandler(async (req, res) => {
   const { sessionId, endTime, status, actualDuration } = req.body;
   
   try {
-    // Update in-memory session state
-    const session = activeSessions.get(sessionId);
-    if (session) {
-      session.status = 'completed';
-      session.endTime = new Date();
-    }
-    
-    // Update in database
     let sessionDoc = await UserToExpertSession.findById(sessionId);
     if (!sessionDoc) {
       sessionDoc = await ExpertToExpertSession.findById(sessionId);
@@ -596,28 +587,56 @@ const completeUserSession = asyncHandler(async (req, res) => {
         message: 'Session not found'
       });
     }
-    
-    // Update session document
+
+    // Update session status and end time
     sessionDoc.status = 'completed';
     sessionDoc.endTime = endTime || new Date();
     sessionDoc.actualDuration = actualDuration;
     await sessionDoc.save();
-    
-    console.log(`✅ User session completed: ${sessionId}`, {
-      status: sessionDoc.status,
-      endTime: sessionDoc.endTime,
-      actualDuration: sessionDoc.actualDuration
-    });
-    
+
+    // Check if the session is eligible for payout
+    if (sessionDoc.status === 'completed' && !sessionDoc.payoutProcessed && sessionDoc.price > 0) {
+      const expertDoc = await Expert.findById(sessionDoc.expertId._id);
+      if (expertDoc) {
+        const averageRating = expertDoc.averageRating || 0;
+        const expertSharePercentage = averageRating >= 4 ? 0.95 : 0.95; // This logic seems redundant, you may want to vary the percentage here.
+        const expertShare = sessionDoc.price * expertSharePercentage;
+        const platformFee = sessionDoc.price - expertShare;
+
+        // Update session payout details
+        sessionDoc.expertPayoutAmount = expertShare;
+        sessionDoc.platformFeeAmount = platformFee;
+
+        // Create transaction for expert payout
+        const creditTx = await Transaction.create({
+          expertId: expertDoc._id,
+          type: 'DEPOSIT',
+          amount: expertShare,
+          status: 'COMPLETED',
+          paymentMethod: 'WALLET',
+          description: 'Expert session earnings (confirmed)',
+          metadata: { origin: 'user_to_expert_session', sessionId: sessionDoc._id }
+        });
+
+        expertDoc.wallets = expertDoc.wallets || { earning: { balance: 0, ledger: [] }, spending: { balance: 0, ledger: [] } };
+        expertDoc.wallets.earning.balance += expertShare;
+
+        expertDoc.wallets.earning.ledger.push(creditTx._id);
+        expertDoc.transactions = expertDoc.transactions || [];
+        expertDoc.transactions.push(creditTx._id);
+
+        // Mark payout as processed after successful transaction
+        sessionDoc.payoutProcessed = true;
+        await expertDoc.save();
+      }
+    }
+
+    await sessionDoc.save(); // Save session with payout details
+
     res.status(200).json({
       success: true,
       message: 'Session completed successfully',
-      session: {
-        sessionId,
-        status: sessionDoc.status,
-        endTime: sessionDoc.endTime,
-        actualDuration: sessionDoc.actualDuration
-      }
+      session: sessionDoc,
     });
     
   } catch (error) {
@@ -629,6 +648,7 @@ const completeUserSession = asyncHandler(async (req, res) => {
     });
   }
 });
+
 
 // Test Zoom credentials
 const testZoomCredentials = asyncHandler(async (req, res) => {

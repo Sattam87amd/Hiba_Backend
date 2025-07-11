@@ -491,20 +491,27 @@ const acceptSession = asyncHandler(async (req, res) => {
   const { id, selectedDate, selectedTime } = req.body;
 
   try {
-    // 1️⃣ Find session only in UserToExpertSession
-    const session = await UserToExpertSession.findById(id)
-      .populate("userId", "firstName lastName email")
-      .populate("expertId", "firstName lastName email");
+    // Find session in either UserToExpertSession or ExpertToExpertSession
+    let session = await ExpertToExpertSession.findById(id)
+      .populate("expertId", "firstName lastName email")
+      .populate("consultingExpertID", "firstName lastName email");
+
+    // If not found, check UserToExpertSession
+    if (!session) {
+      session = await UserToExpertSession.findById(id)
+        .populate("userId", "firstName lastName email")
+        .populate("expertId", "firstName lastName email");
+    }
 
     if (!session) {
       return res.status(404).json({ message: "Session not found" });
     }
 
-    // 2️⃣ Update slots and status
+    // Update slots with the selected date and time
     session.slots = [{ selectedDate, selectedTime }];
-    session.status = "confirmed";
+    session.status = "confirmed"; // Update status to confirmed
 
-    // 3️⃣ Generate Zoom Video SDK meeting details
+    // Generate Zoom Video SDK meeting details
     const meetingNumber = generateMeetingNumber();
     const zoomPassword = generateZoomPassword();
 
@@ -514,47 +521,33 @@ const acceptSession = asyncHandler(async (req, res) => {
     session.zoomMeetingLink = `/expertpanel/sessioncall?meetingId=${meetingNumber}&sessionId=${session._id}`;
     session.userMeetingLink = `/userpanel/sessioncall?meetingId=${meetingNumber}&sessionId=${session._id}`;
 
-    // 4️⃣ Payout processing (if price > 0 and not already processed)
-    if (!session.payoutProcessed && session.price > 0) {
-      const expertDoc = await Expert.findById(session.expertId._id);
-      if (expertDoc) {
-        const averageRating = expertDoc.averageRating || 0;
-        const expertSharePercentage = averageRating >= 4 ? 0.7 : 0.5;
-        const expertShare = session.price * expertSharePercentage;
-        const platformFee = session.price - expertShare;
-
-        session.expertPayoutAmount = expertShare;
-        session.platformFeeAmount = platformFee;
-        session.payoutProcessed = true;
-
-        expertDoc.wallets = expertDoc.wallets || { earning: { balance: 0, ledger: [] }, spending: { balance: 0, ledger: [] } };
-        expertDoc.wallets.earning.balance += expertShare;
-
-        const creditTx = await Transaction.create({
-          expertId: expertDoc._id,
-          type: 'DEPOSIT',
-          amount: expertShare,
-          status: 'COMPLETED',
-          paymentMethod: 'WALLET',
-          description: 'User-to-Expert session earnings (confirmed)',
-          metadata: { origin: 'user_to_expert_session', sessionId: session._id }
-        });
-
-        expertDoc.wallets.earning.ledger.push(creditTx._id);
-        expertDoc.transactions = expertDoc.transactions || [];
-        expertDoc.transactions.push(creditTx._id);
-        await expertDoc.save();
-      }
-    }
-
+    // Save the session with updated information
     await session.save();
 
-    // 5️⃣ Send confirmation email to the user
+    // Send confirmation email to the user (or booking expert in case of expert-to-expert session)
     try {
-      const recipientEmail = session.userId.email;
-      const recipientFirstName = session.userId.firstName;
-      const expertFirstName = session.expertId.firstName;
-      const expertLastName = session.expertId.lastName;
+      let recipientEmail;
+      let recipientFirstName;
+      let recipientLastName;
+      let expertFirstName =
+        session.collection.name === "usertoexpertsessions"
+          ? session.expertId.firstName
+          : session.consultingExpertID.firstName;
+
+      let expertLastName =
+        session.collection.name === "usertoexpertsessions"
+          ? session.expertId.lastName
+          : session.consultingExpertID.lastName;
+
+      if (session.collection.name === "usertoexpertsessions") {
+        recipientEmail = session.userId.email;
+        recipientFirstName = session.userId.firstName;
+        recipientLastName = session.userId.lastName;
+      } else {
+        recipientEmail = session.expertId.email;
+        recipientFirstName = session.expertId.firstName;
+        recipientLastName = session.expertId.lastName;
+      }
 
       if (recipientEmail) {
         await sendEmail({
